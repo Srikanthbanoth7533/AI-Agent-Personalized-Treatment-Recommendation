@@ -118,7 +118,7 @@ with col_title:
 
 # Sidebar Configuration Panel
 st.sidebar.markdown("### ⚙️ Portal Configuration")
-api_base_url = st.sidebar.text_input("FastAPI Base URL", value="http://localhost:8000")
+api_base_url = st.sidebar.text_input("FastAPI Base URL", value="https://ai-agent-personalized-treatment-rec.vercel.app")
 model_type = st.sidebar.selectbox("Prediction Model Engine", options=["xgboost", "random_forest"])
 openai_key = st.sidebar.text_input("OpenAI API Key (Optional)", type="password", help="Enter OpenAI key to unlock conversational GenAI guidance.")
 
