@@ -20,6 +20,8 @@ def test_predict_endpoint_success():
     data = response.json()
     assert "predicted_disease" in data
     assert "confidence" in data
+    assert "top_3_predictions" in data
+    assert len(data["top_3_predictions"]) == 3
     assert "risk_assessment" in data
     assert "symptoms_matched" in data
     assert "itching" in data["symptoms_matched"]

@@ -23,7 +23,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -82,7 +82,7 @@ def predict_disease(req: PredictRequest):
             raise HTTPException(status_code=400, detail="None of the input symptoms matched the training features list.")
 
         # Run prediction
-        preds = ml_engine.predict_topk(symptom_vector, k=1, model_type=req.model_type)
+        preds = ml_engine.predict_topk(symptom_vector, k=3, model_type=req.model_type)
         primary = preds[0]["disease"]
         confidence = preds[0]["confidence"]
         
@@ -92,6 +92,7 @@ def predict_disease(req: PredictRequest):
         return {
             "predicted_disease": primary,
             "confidence": confidence,
+            "top_3_predictions": preds,
             "description": info.get("description"),
             "precautions": info.get("precautions"),
             "risk_assessment": risk,

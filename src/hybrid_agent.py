@@ -58,16 +58,40 @@ class HybridAgent:
         if len(history) > 10:
             history.pop(0)
 
+    def is_conversational_query(self, text):
+        text_lower = text.lower().strip()
+        conversational_keywords = [
+            "hello", "hi", "hey", "greetings", "good morning", "good afternoon", "good evening",
+            "thank you", "thanks", "awesome", "great", "perfect", "cool",
+            "who are you", "what can you do", "help", "capabilities", "features", "functions",
+            "how are you", "what's up", "hey there"
+        ]
+        for kw in conversational_keywords:
+            if kw in text_lower or text_lower.startswith(kw):
+                return True
+        return False
+
     def predict_and_respond(self, user_text, session_id="default", openai_api_key=None, biomarkers=None):
         history = self.get_history(session_id)
         
-        # Extract symptoms
+        # Extract symptoms from the current message
         nlp_res = self.nlp_engine.extract_symptoms(user_text)
-        symptoms_found = nlp_res["symptoms_found"]
+        current_symptoms = nlp_res["symptoms_found"]
         
-        # If no symptoms are found, check if it's just conversational
-        if not symptoms_found and not biomarkers:
-            response = self.handle_conversational_chat(user_text, history, openai_api_key)
+        # Determine if we should route to conversational chat
+        is_conv = self.is_conversational_query(user_text)
+        
+        # Check if there are any symptoms in the history
+        has_history_symptoms = False
+        for msg in history:
+            if msg["role"] == "user":
+                prev_res = self.nlp_engine.extract_symptoms(msg["content"])
+                if prev_res["symptoms_found"]:
+                    has_history_symptoms = True
+                    break
+                    
+        if (not current_symptoms and is_conv) or (not current_symptoms and not has_history_symptoms and not biomarkers):
+            response = self.handle_conversational_chat(user_text, history, openai_api_key, biomarkers)
             self.add_to_history(session_id, "user", user_text)
             self.add_to_history(session_id, "assistant", response)
             return {
@@ -78,8 +102,17 @@ class HybridAgent:
                 "type": "chat"
             }
 
-        # Otherwise, we have symptoms and/or biomarkers. Map symptoms to vector.
-        symptom_vector = [nlp_res["vector"].get(s, 0) for s in self.symptoms]
+        # Otherwise, this is a diagnosis query. Accumulate symptoms from history and current message.
+        accumulated_symptoms = set(current_symptoms)
+        for msg in history:
+            if msg["role"] == "user":
+                prev_res = self.nlp_engine.extract_symptoms(msg["content"])
+                accumulated_symptoms.update(prev_res["symptoms_found"])
+                
+        symptoms_found = list(accumulated_symptoms)
+
+        # Map symptoms to vector.
+        symptom_vector = [1 if s in symptoms_found else 0 for s in self.symptoms]
         
         # Check if we have symptoms in vector (at least one 1)
         has_symptoms = sum(symptom_vector) > 0
@@ -121,7 +154,7 @@ class HybridAgent:
             )
         else:
             response = self.generate_rule_response(
-                symptoms_found, predictions, disease_info, risk_res, biomarkers
+                symptoms_found, predictions, disease_info, risk_res, biomarkers, history
             )
             
         self.add_to_history(session_id, "user", user_text)
@@ -135,7 +168,7 @@ class HybridAgent:
             "type": "diagnosis"
         }
 
-    def handle_conversational_chat(self, text, history, api_key):
+    def handle_conversational_chat(self, text, history, api_key, biomarkers=None):
         if api_key:
             try:
                 client = OpenAI(api_key=api_key)
@@ -160,10 +193,15 @@ class HybridAgent:
         
         # Check greetings
         if any(g in text_lower for g in ["hello", "hi", "hey", "greetings", "good morning", "good afternoon", "good evening"]):
-            return ("Hello! I'm Aegis AI, your personalized healthcare assistant. How can I help you today? "
+            resp = ("Hello! I'm Aegis AI, your personalized healthcare assistant. How can I help you today? "
                     "You can describe your symptoms (e.g. 'I have a fever and chills'), ask general health questions, "
-                    "or upload a medical report for analysis.\n\n"
-                    "*Disclaimer: I am an AI, not a doctor. For any medical emergency, please consult a physician.*")
+                    "or upload a medical report for analysis.\n\n")
+            if biomarkers:
+                parsed = [f"{k.capitalize()}: {v}" for k, v in biomarkers.items() if v is not None]
+                if parsed:
+                    resp += f"*System Note: I have loaded your medical report values ({', '.join(parsed)}). Let me know if you would like me to analyze them alongside your symptoms.* \n\n"
+            resp += "*Disclaimer: I am an AI, not a doctor. For any medical emergency, please consult a physician.*"
+            return resp
                     
         # Check capabilities / who are you / help
         if any(keyword in text_lower for keyword in ["who are you", "what can you do", "help", "capabilities", "features", "functions"]):
@@ -227,44 +265,84 @@ class HybridAgent:
             print(f"OpenAI diagnosis prompt failed: {e}. Falling back to rule-based response.")
             return self.generate_rule_response(symptoms, predictions, disease_info, risk, biomarkers)
 
-    def generate_rule_response(self, symptoms, predictions, disease_info, risk, biomarkers):
-        resp = "### AI Clinical Assessment\n\n"
+    def generate_rule_response(self, symptoms, predictions, disease_info, risk, biomarkers, history=None):
+        resp = "### Aegis AI - Clinical Decision Support Analysis\n\n"
         
         if symptoms:
-            resp += f"**Symptoms Detected:** {', '.join(symptoms)}\n\n"
-            
+            clean_symptoms = [s.replace("_", " ") for s in symptoms]
+            resp += f"Based on the symptoms you've reported (**{', '.join(clean_symptoms)}**), I have performed a multi-model clinical assessment.\n\n"
+        else:
+            resp += "I have reviewed your active session context and biomarkers.\n\n"
+
         if biomarkers:
             parsed = []
             for k, v in biomarkers.items():
                 if v is not None:
-                    parsed.append(f"{k.capitalize()}: {v}")
+                    parsed.append(f"**{k.capitalize()}**: {v}")
             if parsed:
-                resp += f"**Biomarkers Extracted:** {', '.join(parsed)}\n\n"
+                resp += f"**Extracted Lab Biomarkers:** {', '.join(parsed)}\n\n"
+
+            # Report-Based Prediction Insights (Requirement 14)
+            glucose = biomarkers.get("glucose")
+            hemo = biomarkers.get("hemoglobin")
+            chol = biomarkers.get("cholesterol")
+            insights = []
+            if glucose is not None and glucose > 100:
+                insights.append("Your elevated glucose levels indicate a potential risk for hyperglycemia/diabetes. This should be monitored.")
+            if hemo is not None and hemo < 12.0:
+                insights.append("Your low hemoglobin levels indicate potential anemia, which can cause symptoms like fatigue or weakness.")
+            if chol is not None and chol >= 200:
+                insights.append("Your total cholesterol is elevated, suggesting a potential cardiovascular risk.")
+            if insights:
+                resp += "##### 📈 Report-Based Insights\n"
+                for ins in insights:
+                    resp += f"- {ins}\n"
+                resp += "\n"
 
         if predictions:
-            resp += "**Top Disease Predictions:**\n"
-            for pred in predictions:
-                resp += f"- **{pred['disease']}** (Confidence: {pred['confidence'] * 100:.1f}%)\n"
-            resp += "\n"
-
             primary = predictions[0]['disease']
-            resp += f"#### About {primary}:\n"
-            resp += f"{disease_info.get('description', 'No description available.')}\n\n"
+            primary_conf = predictions[0]['confidence'] * 100
+            
+            resp += f"#### 🩺 Differential Diagnosis\n"
+            resp += f"Our classification engine suggests **{primary}** as the primary likelihood (Confidence: **{primary_conf:.1f}%**).\n"
+            
+            if len(predictions) > 1:
+                resp += "\nComparing alternative possibilities, we also evaluated:\n"
+                for pred in predictions[1:3]:
+                    resp += f"- **{pred['disease']}** (Confidence: {pred['confidence'] * 100:.1f}%)\n"
+                resp += f"\n*Reasoning:* **{primary}** is predicted with higher likelihood because the clinical vector of your symptoms fits its diagnostic pattern closely. "
+                if len(symptoms) > 1:
+                    resp += f"Specifically, the combination of symptoms like {', '.join(clean_symptoms[:2])} strongly matches the signature of {primary} over other conditions."
+                resp += "\n\n"
+            
+            resp += f"##### About {primary}\n"
+            resp += f"{disease_info.get('description', 'No specific description available.')}\n\n"
             
             precautions = disease_info.get('precautions', [])
             if precautions:
-                resp += "#### Recommended Precautions:\n"
+                resp += "##### 📋 Recommended Next Steps & Precautions\n"
                 for prec in precautions:
-                    resp += f"- {prec}\n"
+                    resp += f"- {prec.capitalize()}\n"
                 resp += "\n"
 
-        resp += f"#### Risk Assessment: **{risk['level']}**\n"
+        # Risk Assessment (Requirement 16)
+        resp += f"#### ⚠️ Risk Profile: **{risk['level']}**\n"
         for reason in risk["reasons"]:
             resp += f"- {reason}\n"
         resp += "\n"
+
+        # Follow-Up Questions (Requirement 6)
+        resp += "#### ❓ Follow-Up Inquiries\n"
+        resp += "To help me refine this differential diagnosis, please consider:\n"
+        resp += "1. *Onset & Duration:* How many days have you been experiencing these symptoms?\n"
+        if symptoms and "high_fever" in symptoms:
+            resp += "2. *Pattern:* Is the fever constant, or does it spike at specific times of the day?\n"
+        else:
+            resp += "2. *Additional symptoms:* Have you noticed any other changes like changes in sleep, appetite, or fatigue?\n"
+        resp += "3. *Environment:* Have you recently traveled or been exposed to anyone with similar symptoms?\n\n"
         
         resp += "---\n"
-        resp += "***Disclaimer:** I am an AI agent, not a qualified doctor. The predictions and advice generated are for educational purposes. If you are experiencing severe symptoms, please visit a clinic or hospital immediately.*"
+        resp += "***Disclaimer:** I am an AI clinical assistant, not a doctor. The predictions and advice generated are for decision-support and educational purposes only. If you are experiencing severe symptoms, please visit a clinic or hospital immediately.*"
         
         return resp
 
