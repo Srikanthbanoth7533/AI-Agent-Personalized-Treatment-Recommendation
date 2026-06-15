@@ -1,5 +1,8 @@
 import os
-import joblib
+try:
+    import joblib
+except ImportError:
+    joblib = None
 from openai import OpenAI
 from src.nlp_engine import NLPEngine
 from src.ml_engine import MLEngine
@@ -12,19 +15,27 @@ class HybridAgent:
         self.ml_engine = MLEngine(models_dir)
         self.risk_engine = RiskEngine()
         
-        # Load symptom names list
-        symptoms_path = os.path.join(models_dir, "symptoms.joblib")
-        if os.path.exists(symptoms_path):
-            self.symptoms = joblib.load(symptoms_path)
-        else:
+        # Try loading compiled model lists first to avoid joblib
+        try:
+            from src.compiled_model import SYMPTOMS, DISEASE_METADATA
+            self.symptoms = SYMPTOMS
+            self.metadata = DISEASE_METADATA
+        except ImportError:
             self.symptoms = []
-            
-        # Load disease metadata
-        metadata_path = os.path.join(models_dir, "disease_metadata.joblib")
-        if os.path.exists(metadata_path):
-            self.metadata = joblib.load(metadata_path)
-        else:
             self.metadata = {}
+
+        # Fallback to joblib if available
+        if (not self.symptoms or not self.metadata) and joblib is not None:
+            try:
+                symptoms_path = os.path.join(models_dir, "symptoms.joblib")
+                if os.path.exists(symptoms_path):
+                    self.symptoms = joblib.load(symptoms_path)
+                
+                metadata_path = os.path.join(models_dir, "disease_metadata.joblib")
+                if os.path.exists(metadata_path):
+                    self.metadata = joblib.load(metadata_path)
+            except Exception as e:
+                print(f"Failed to load joblib configuration: {e}")
             
         # Memory store: {session_id: list of messages}
         self.memory = {}
