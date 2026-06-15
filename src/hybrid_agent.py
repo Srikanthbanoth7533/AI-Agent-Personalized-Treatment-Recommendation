@@ -8,11 +8,13 @@ from src.nlp_engine import NLPEngine
 from src.ml_engine import MLEngine
 from src.risk_engine import RiskEngine
 
+DEFAULT_MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
+
 class HybridAgent:
-    def __init__(self, models_dir=r"C:\Users\DELL\Documents\AntigravityProjects\AI-Agent-Personalized-Treatment-Recommendation\models"):
-        self.models_dir = models_dir
-        self.nlp_engine = NLPEngine(models_dir)
-        self.ml_engine = MLEngine(models_dir)
+    def __init__(self, models_dir=None):
+        self.models_dir = models_dir or DEFAULT_MODELS_DIR
+        self.nlp_engine = NLPEngine(self.models_dir)
+        self.ml_engine = MLEngine(self.models_dir)
         self.risk_engine = RiskEngine()
         
         # Try loading compiled model lists first to avoid joblib
@@ -153,10 +155,37 @@ class HybridAgent:
             except Exception as e:
                 print(f"OpenAI conversational chat failed: {e}")
                 
-        return ("Hello! I am your personalized AI Healthcare Assistant. "
-                "I am here to help analyze symptoms, review medical reports (PDFs/Images), and provide risk assessments. "
-                "Please describe the symptoms you are experiencing (e.g. 'I have a headache and muscle pain') or upload a medical report to get started.\n\n"
-                "*Disclaimer: I am an AI assistant, not a doctor. Please consult a healthcare professional for actual medical diagnosis and treatment.*")
+        # Rule-based dynamic conversational handler when OpenAI API Key is missing
+        text_lower = text.lower().strip()
+        
+        # Check greetings
+        if any(g in text_lower for g in ["hello", "hi", "hey", "greetings", "good morning", "good afternoon", "good evening"]):
+            return ("Hello! I'm Aegis AI, your personalized healthcare assistant. How can I help you today? "
+                    "You can describe your symptoms (e.g. 'I have a fever and chills'), ask general health questions, "
+                    "or upload a medical report for analysis.\n\n"
+                    "*Disclaimer: I am an AI, not a doctor. For any medical emergency, please consult a physician.*")
+                    
+        # Check capabilities / who are you / help
+        if any(keyword in text_lower for keyword in ["who are you", "what can you do", "help", "capabilities", "features", "functions"]):
+            return ("I am Aegis AI, a clinical decision support and personalized health assistant. "
+                    "My core capabilities include:\n"
+                    "1. **Symptom Extraction & Diagnosis:** Analyzing symptoms you describe and predicting potential diseases using machine learning.\n"
+                    "2. **Risk Assessment:** Determining severity levels (Low/Medium/High) based on symptoms and conditions.\n"
+                    "3. **Report Analysis:** Parsing uploaded medical reports (PDF/Images) to extract key lab biomarkers like Glucose, Hemoglobin, and Cholesterol.\n"
+                    "4. **Precautions & Descriptions:** Providing detailed precautions and info for matched diseases.\n\n"
+                    "How can I assist you with your health query today?\n\n"
+                    "*Disclaimer: I am an AI, not a doctor. For any medical emergency, please consult a physician.*")
+                    
+        # Check appreciation
+        if any(keyword in text_lower for keyword in ["thank you", "thanks", "awesome", "great", "perfect", "cool"]):
+            return ("You're welcome! I'm happy to help. Let me know if you have any other symptoms or medical reports you'd like me to analyze.\n\n"
+                    "*Disclaimer: I am an AI assistant. Please seek professional medical advice for diagnoses.*")
+                    
+        # General response helper
+        return (f"I received your message: \"{text}\". I couldn't find any symptoms or biomarkers in it to run a diagnostic prediction. "
+                "Could you please describe any symptoms you are experiencing (like fever, cough, joint pain, or headache) "
+                "or upload a medical report? This will allow me to provide a clinical risk assessment.\n\n"
+                "*Disclaimer: I am an AI assistant. Please seek professional medical advice.*")
 
     def generate_genai_response(self, text, history, symptoms, predictions, disease_info, risk, biomarkers, api_key):
         try:

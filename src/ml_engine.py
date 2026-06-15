@@ -18,11 +18,13 @@ except ImportError:
     predict_topk_compiled = None
     SYMPTOMS = []
 
+DEFAULT_MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
+
 class MLEngine:
-    def __init__(self, models_dir=r"C:\Users\DELL\Documents\AntigravityProjects\AI-Agent-Personalized-Treatment-Recommendation\models"):
-        self.models_dir = models_dir
-        self.rf_path = os.path.join(models_dir, "random_forest.joblib")
-        self.xgb_path = os.path.join(models_dir, "xgboost.joblib")
+    def __init__(self, models_dir=None):
+        self.models_dir = models_dir or DEFAULT_MODELS_DIR
+        self.rf_path = os.path.join(self.models_dir, "random_forest.joblib")
+        self.xgb_path = os.path.join(self.models_dir, "xgboost.joblib")
         
         # We only import DataPreprocessor if ML libs are present
         if HAS_ML_LIBS:

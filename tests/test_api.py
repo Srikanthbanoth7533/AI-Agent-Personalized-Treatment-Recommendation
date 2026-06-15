@@ -61,3 +61,29 @@ def test_chat_endpoint_diagnosis():
     assert "response" in data
     assert data["type"] == "diagnosis"
     assert len(data["symptoms_found"]) > 0
+
+def test_analyze_report_pdf():
+    pdf_content = (
+        b'%PDF-1.4\n'
+        b'1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n'
+        b'2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n'
+        b'3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents 4 0 R >>\nendobj\n'
+        b'4 0 obj\n<< /Length 100 >>\nstream\n'
+        b'BT\n/F1 12 Tf\n72 712 Td\n(Fasting Glucose: 112 mg/dL. Hemoglobin: 11.5 g/dL. Total Cholesterol: 210 mg/dL) Tj\nET\n'
+        b'endstream\nendobj\n'
+        b'xref\n0 5\n0000000000 65535 f\n0000000009 00000 n\n0000000056 00000 n\n0000000111 00000 n\n0000000241 00000 n\n'
+        b'trailer\n<< /Size 5 /Root 1 0 R >>\n'
+        b'startxref\n392\n%%EOF\n'
+    )
+    import io
+    response = client.post(
+        "/analyze_report",
+        files={"file": ("report.pdf", io.BytesIO(pdf_content), "application/pdf")}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "biomarkers" in data
+    assert data["biomarkers"]["glucose"] == 112.0
+    assert data["biomarkers"]["hemoglobin"] == 11.5
+    assert data["biomarkers"]["cholesterol"] == 210.0
+    assert "findings" in data

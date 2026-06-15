@@ -6,9 +6,11 @@ try:
 except ImportError:
     spacy = None
 
+DEFAULT_MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
+
 class NLPEngine:
-    def __init__(self, models_dir=r"C:\Users\DELL\Documents\AntigravityProjects\AI-Agent-Personalized-Treatment-Recommendation\models"):
-        self.models_dir = models_dir
+    def __init__(self, models_dir=None):
+        self.models_dir = models_dir or DEFAULT_MODELS_DIR
         
         # Try loading spaCy
         if spacy is not None:

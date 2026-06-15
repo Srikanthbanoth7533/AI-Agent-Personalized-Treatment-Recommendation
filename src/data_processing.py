@@ -3,17 +3,19 @@ import numpy as np
 import joblib
 import os
 
+DEFAULT_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+DEFAULT_MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
+
 class DataPreprocessor:
-    def __init__(self, data_dir=r"C:\Users\DELL\Documents\AntigravityProjects\AI-Agent-Personalized-Treatment-Recommendation\data",
-                 models_dir=r"C:\Users\DELL\Documents\AntigravityProjects\AI-Agent-Personalized-Treatment-Recommendation\models"):
-        self.data_dir = data_dir
-        self.models_dir = models_dir
-        self.encoder_path = os.path.join(models_dir, "label_encoder.joblib")
+    def __init__(self, data_dir=None, models_dir=None):
+        self.data_dir = data_dir or DEFAULT_DATA_DIR
+        self.models_dir = models_dir or DEFAULT_MODELS_DIR
+        self.encoder_path = os.path.join(self.models_dir, "label_encoder.joblib")
         
-        self.train_path = os.path.join(data_dir, "Training.csv")
-        self.test_path = os.path.join(data_dir, "Testing.csv")
-        self.desc_path = os.path.join(data_dir, "description.csv")
-        self.prec_path = os.path.join(data_dir, "precautions.csv")
+        self.train_path = os.path.join(self.data_dir, "Training.csv")
+        self.test_path = os.path.join(self.data_dir, "Testing.csv")
+        self.desc_path = os.path.join(self.data_dir, "description.csv")
+        self.prec_path = os.path.join(self.data_dir, "precautions.csv")
 
     def load_raw_data(self):
         train_df = pd.read_csv(self.train_path)

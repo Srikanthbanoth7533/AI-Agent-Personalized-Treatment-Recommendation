@@ -286,12 +286,25 @@ with tabs[1]:
     # General Model Metrics comparison
     st.markdown("##### ⚙️ Machine Learning Model Comparison")
     
-    # Load model training metrics summary
-    metrics_path = r"C:\Users\DELL\Documents\AntigravityProjects\AI-Agent-Personalized-Treatment-Recommendation\models\metrics_summary.joblib"
-    if os.path.exists(metrics_path):
-        import joblib
-        metrics = joblib.load(metrics_path)
-        
+    # Load model training metrics summary dynamically from API or local fallback
+    metrics = None
+    try:
+        res_metrics = requests.get(f"{api_base_url}/metrics")
+        if res_metrics.status_code == 200:
+            metrics = res_metrics.json()
+    except Exception:
+        pass
+
+    if not metrics:
+        local_metrics_path = os.path.join(os.path.dirname(__file__), "models", "metrics_summary.joblib")
+        if os.path.exists(local_metrics_path):
+            import joblib
+            try:
+                metrics = joblib.load(local_metrics_path)
+            except Exception:
+                pass
+
+    if metrics:
         model_names = ["Random Forest Baseline", "XGBoost Optimized"]
         accs = [metrics["random_forest"]["accuracy"], metrics["xgboost"]["accuracy"]]
         f1s = [metrics["random_forest"]["f1"], metrics["xgboost"]["f1"]]
@@ -305,7 +318,7 @@ with tabs[1]:
         })
         st.dataframe(comp_df, hide_index=True)
     else:
-        st.warning("Model training metrics summary not found. Run model training first.")
+        st.warning("Model training metrics summary not found.")
 
 # Tab 3: Diagnostics & API Details
 with tabs[2]:
@@ -328,14 +341,27 @@ with tabs[2]:
             
     with col_d2:
         st.markdown("##### Clinical Feature Map & Properties")
-        symptoms_path = r"C:\Users\DELL\Documents\AntigravityProjects\AI-Agent-Personalized-Treatment-Recommendation\models\symptoms.joblib"
-        if os.path.exists(symptoms_path):
-            import joblib
-            symptoms = joblib.load(symptoms_path)
+        symptoms = None
+        try:
+            res_sym = requests.get(f"{api_base_url}/symptoms")
+            if res_sym.status_code == 200:
+                symptoms = res_sym.json().get("symptoms", [])
+        except Exception:
+            pass
+
+        if not symptoms:
+            local_symptoms_path = os.path.join(os.path.dirname(__file__), "models", "symptoms.joblib")
+            if os.path.exists(local_symptoms_path):
+                import joblib
+                try:
+                    symptoms = joblib.load(local_symptoms_path)
+                except Exception:
+                    pass
+
+        if symptoms:
             st.info(f"Total clinical features (symptoms) supported: {len(symptoms)}")
             
             with st.expander("Show Supported Symptoms List"):
-                # Display 3-column list of clean symptoms
                 clean_symptoms = [s.replace("_", " ").capitalize() for s in symptoms]
                 st.write(", ".join(clean_symptoms))
         else:
